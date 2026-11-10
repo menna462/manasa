@@ -247,10 +247,21 @@ export const CurriculumHierarchySection: React.FC<CurriculumHierarchySectionProp
 
                                 {/* PDF attached */}
                                 {lesson.hasPdf && (
-                                  <div className="flex items-center gap-1 text-emerald-700 font-semibold">
+                                  <a
+                                    href={lesson.pdfUrl || "#"}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    onClick={(e) => {
+                                      if (!lesson.pdfUrl) {
+                                        e.preventDefault();
+                                        alert("لم يتم رفع ملف PDF لهذا الدرس بعد.");
+                                      }
+                                    }}
+                                    className="flex items-center gap-1 text-emerald-700 font-semibold hover:text-emerald-900 hover:underline cursor-pointer transition-colors"
+                                  >
                                     <FileText className="w-3.5 h-3.5" />
                                     <span>{lesson.pdfTitle || "ملزمة PDF مدمجة"}</span>
-                                  </div>
+                                  </a>
                                 )}
 
                                 {/* Quiz attached */}

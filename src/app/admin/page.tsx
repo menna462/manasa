@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useMemo } from "react";
+import { FileSpreadsheet, FileText, X } from "lucide-react";
 import { Navbar } from "@/components/Navbar";
 import { HeaderBanner } from "@/components/HeaderBanner";
 import { StatCards } from "@/components/StatCards";
@@ -108,6 +109,7 @@ export default function AdminDashboardPage() {
   const [isPrintModalOpen, setIsPrintModalOpen] = useState<boolean>(false);
   const [printCodesList, setPrintCodesList] = useState<CodeItem[]>([]);
   const [toast, setToast] = useState<ToastMessage | null>(null);
+  const [postGenerateCodes, setPostGenerateCodes] = useState<CodeItem[] | null>(null);
 
   const showToast = (text: string, type: "success" | "error" | "info" = "success") => {
     setToast({
@@ -156,6 +158,8 @@ export default function AdminDashboardPage() {
       }));
     }
     showToast(`تم توليد ${requestedCount} كود جديد بنجاح في قاعدة البيانات وتحديث الإحصائيات!`, "success");
+    // Show post-generation export dialog
+    setPostGenerateCodes(newGenerated);
   };
 
   const handleToggleSelect = (id: string) => {
@@ -281,7 +285,8 @@ export default function AdminDashboardPage() {
     handleExportExcel(selectedList);
   };
 
-  const handleExportPdf = () => {
+  // Export to PDF (print)
+  const handleExportPdf = (itemsToExport?: CodeItem[]) => {
     showToast("جاري تجهيز تقرير PDF وحفظه...", "info");
     setTimeout(() => {
       window.print();
@@ -338,7 +343,6 @@ export default function AdminDashboardPage() {
             statusFilter={statusFilter}
             setStatusFilter={setStatusFilter}
             onExportExcel={() => handleExportExcel()}
-            onExportPdf={handleExportPdf}
             onPrintCards={handlePrintCards}
           />
 
@@ -405,6 +409,56 @@ export default function AdminDashboardPage() {
         codes={printCodesList}
         onClose={() => setIsPrintModalOpen(false)}
       />
+
+      {/* Post-Generation Export Modal */}
+      {postGenerateCodes && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-gray-100 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-extrabold text-gray-900 text-base">
+                تم توليد {postGenerateCodes.length} كود بنجاح ✅
+              </h3>
+              <button
+                onClick={() => setPostGenerateCodes(null)}
+                className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-xl transition-colors cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <p className="text-sm text-gray-500 mb-5">
+              هل تريد تصدير الأكواد المولّدة الآن؟
+            </p>
+            <div className="flex flex-col gap-2.5">
+              <button
+                onClick={() => {
+                  handleExportExcel(postGenerateCodes);
+                  setPostGenerateCodes(null);
+                }}
+                className="w-full bg-black hover:bg-neutral-800 text-white font-bold text-sm px-4 py-3 rounded-xl flex items-center justify-center gap-2.5 transition-all active:scale-[0.98] cursor-pointer shadow-sm"
+              >
+                <FileSpreadsheet className="w-5 h-5 text-emerald-400" />
+                <span>تصدير كملف Excel</span>
+              </button>
+              <button
+                onClick={() => {
+                  handleExportPdf(postGenerateCodes);
+                  setPostGenerateCodes(null);
+                }}
+                className="w-full bg-black hover:bg-neutral-800 text-white font-bold text-sm px-4 py-3 rounded-xl flex items-center justify-center gap-2.5 transition-all active:scale-[0.98] cursor-pointer shadow-sm"
+              >
+                <FileText className="w-5 h-5 text-rose-400" />
+                <span>تصدير كملف PDF</span>
+              </button>
+              <button
+                onClick={() => setPostGenerateCodes(null)}
+                className="w-full text-gray-500 hover:text-gray-800 font-bold text-sm py-2.5 transition-colors cursor-pointer"
+              >
+                تخطي
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Notification Toast */}
       <Toast toast={toast} onDismiss={() => setToast(null)} />

@@ -111,6 +111,9 @@ export const LessonEditorModal: React.FC<LessonEditorModalProps> = ({
   const [pdfFileName, setPdfFileName] = useState<string>("ملزمة_الخلايا_الجلفانية_(6.2 MB).pdf");
   const [isQuizRequired, setIsQuizRequired] = useState<boolean>(true);
 
+  // PDF file ref
+  const pdfInputRef = React.useRef<HTMLInputElement>(null);
+
   // Helpers
   const isValidUrl = (urlStr: string): boolean => {
     if (!urlStr || !urlStr.trim()) return false;
@@ -840,13 +843,33 @@ export const LessonEditorModal: React.FC<LessonEditorModalProps> = ({
 
             {/* Attach PDF button & Status badge */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-[#F8F9FA] p-3 rounded-xl border border-gray-100">
+              <input
+                ref={pdfInputRef}
+                type="file"
+                accept=".pdf,application/pdf"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    setHasPdf(true);
+                    setPdfFileName(file.name);
+                  }
+                }}
+              />
               <button
                 type="button"
-                onClick={() => setHasPdf(!hasPdf)}
+                onClick={() => {
+                  if (hasPdf) {
+                    setHasPdf(false);
+                    setPdfFileName("");
+                  } else {
+                    pdfInputRef.current?.click();
+                  }
+                }}
                 className="bg-white hover:bg-gray-50 text-gray-800 border border-gray-200 font-bold text-xs px-4 py-2 rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-2xs active:scale-95 shrink-0"
               >
                 <Paperclip className="w-3.5 h-3.5 text-gray-600" />
-                <span>ارفق ملزمة الشرح (PDF)</span>
+                <span>{hasPdf ? "إزالة ملزمة PDF" : "ارفق ملزمة الشرح (PDF)"}</span>
               </button>
 
               {hasPdf && (

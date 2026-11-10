@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Search, ChevronDown, FileSpreadsheet, FileText, Printer } from "lucide-react";
+import { Search, ChevronDown, FileSpreadsheet, Printer } from "lucide-react";
 import { CodeStatus } from "@/types/dashboard";
 
 interface ToolbarProps {
@@ -10,7 +10,6 @@ interface ToolbarProps {
   statusFilter: string;
   setStatusFilter: (s: string) => void;
   onExportExcel: () => void;
-  onExportPdf: () => void;
   onPrintCards: () => void;
 }
 
@@ -20,7 +19,6 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   statusFilter,
   setStatusFilter,
   onExportExcel,
-  onExportPdf,
   onPrintCards,
 }) => {
   return (
@@ -68,15 +66,6 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         >
           <FileSpreadsheet className="w-4 h-4 text-emerald-400" />
           <span>تصدير Excel</span>
-        </button>
-
-        {/* تصدير PDF */}
-        <button
-          onClick={onExportPdf}
-          className="bg-black hover:bg-neutral-800 text-white text-xs sm:text-sm font-bold px-4 py-2.5 rounded-xl flex items-center gap-2 transition-all active:scale-[0.98] shrink-0 cursor-pointer shadow-xs"
-        >
-          <FileText className="w-4 h-4 text-rose-400" />
-          <span>تصدير PDF</span>
         </button>
 
         {/* طباعة بطاقات A4 */}
