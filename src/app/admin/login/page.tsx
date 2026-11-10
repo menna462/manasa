@@ -23,11 +23,10 @@ export default function AdminLoginPage() {
   const router = useRouter();
 
   // Form State
-  const [email, setEmail] = useState("admin@emadhussein.edu");
-  const [password, setPassword] = useState("••••••••••••");
-  const [actualPassword, setActualPassword] = useState("AdminSecret@2026");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(true);
+  const [rememberMe, setRememberMe] = useState(false);
 
   // Status / Feedback State
   const [isLoading, setIsLoading] = useState(false);
@@ -52,7 +51,7 @@ export default function AdminLoginPage() {
       return;
     }
 
-    if (!actualPassword.trim()) {
+    if (!password.trim()) {
       setErrorMessage("يرجى إدخال كلمة المرور.");
       return;
     }
@@ -60,7 +59,7 @@ export default function AdminLoginPage() {
     setIsLoading(true);
 
     try {
-      const res = await adminApi.login(email.trim(), actualPassword.trim());
+      const res = await adminApi.login(email.trim(), password.trim());
       setToastMessage(res.message || "تم تسجيل الدخول بنجاح! جاري الانتقال للوحة التحكم...");
       setTimeout(() => {
         router.push("/admin");
@@ -70,13 +69,6 @@ export default function AdminLoginPage() {
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const handlePasswordChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    setActualPassword(val);
-    setPassword(val);
-    if (errorMessage) setErrorMessage("");
   };
 
   const handleForgotPasswordSubmit = (e: React.FormEvent) => {
@@ -197,16 +189,15 @@ export default function AdminLoginPage() {
 
                 <input
                   type={showPassword ? "text" : "password"}
-                  value={showPassword ? actualPassword : password}
-                  onChange={handlePasswordChange}
-                  onFocus={() => {
-                    if (password === "••••••••••••") {
-                      setPassword(actualPassword);
-                    }
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    if (errorMessage) setErrorMessage("");
                   }}
-                  placeholder="••••••••••••"
+                  placeholder="أدخل كلمة المرور"
                   dir="ltr"
-                  className="w-full py-3 px-11 text-xs sm:text-sm font-semibold text-gray-800 placeholder-gray-400 focus:outline-none bg-transparent font-mono tracking-wider text-right"
+                  autoComplete="current-password"
+                  className="w-full py-3 px-11 text-xs sm:text-sm font-semibold text-gray-800 placeholder-gray-400 focus:outline-none bg-transparent tracking-wider text-right"
                   required
                 />
 
