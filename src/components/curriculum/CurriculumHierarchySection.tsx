@@ -27,6 +27,8 @@ interface CurriculumHierarchySectionProps {
   onAddLessonToUnit: (unitId: string) => void;
   onEditLesson: (lesson: LessonItem, unitId: string) => void;
   onDeleteLesson: (lessonId: string, unitId: string) => void;
+  onEditUnit?: (unit: UnitItem) => void;
+  onDeleteUnit?: (unitId: string, unitTitle: string) => void;
 }
 
 export const CurriculumHierarchySection: React.FC<CurriculumHierarchySectionProps> = ({
@@ -36,6 +38,8 @@ export const CurriculumHierarchySection: React.FC<CurriculumHierarchySectionProp
   onAddLessonToUnit,
   onEditLesson,
   onDeleteLesson,
+  onEditUnit,
+  onDeleteUnit,
 }) => {
   // Track expanded units
   const [expandedUnits, setExpandedUnits] = useState<Record<string, boolean>>({
@@ -150,12 +154,25 @@ export const CurriculumHierarchySection: React.FC<CurriculumHierarchySectionProp
                     type="button"
                     onClick={(e) => {
                       e.stopPropagation();
-                      alert(`تعديل ${unit.title}`);
+                      onEditUnit?.(unit);
                     }}
-                    className="p-1.5 text-gray-400 hover:text-gray-700 hover:bg-gray-100 border border-gray-200 rounded-xl transition-colors cursor-pointer"
-                    title="تعديل اسم الوحدة"
+                    className="p-1.5 text-gray-400 hover:text-[#FF6A00] hover:bg-orange-50 border border-gray-200 rounded-xl transition-colors cursor-pointer"
+                    title="تعديل اسم وبيانات الوحدة"
                   >
                     <Pencil className="w-4 h-4" />
+                  </button>
+
+                  {/* حذف الوحدة */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDeleteUnit?.(unit.id, unit.title);
+                    }}
+                    className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 border border-gray-200 rounded-xl transition-colors cursor-pointer"
+                    title="حذف الوحدة ومحتوياتها"
+                  >
+                    <Trash2 className="w-4 h-4" />
                   </button>
 
                   {/* Accordion Chevron Toggle */}

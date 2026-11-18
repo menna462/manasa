@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   initialDailyActivations,
   weeklyActivationsData,
@@ -43,6 +43,12 @@ export const DailySalesLineChart: React.FC<DailySalesLineChartProps> = ({
       ? activeDataset.findIndex((d) => d.isPeak)
       : Math.floor(activeDataset.length / 2)
   );
+
+  // Reset hoveredIndex when dataset changes to avoid out-of-bounds access
+  useEffect(() => {
+    const peakIdx = activeDataset.findIndex((d) => d.isPeak);
+    setHoveredIndex(peakIdx >= 0 ? peakIdx : Math.floor(activeDataset.length / 2));
+  }, [activeDataset]);
 
   // Dimensions for coordinate mapping
   const width = 800;
@@ -293,7 +299,7 @@ export const DailySalesLineChart: React.FC<DailySalesLineChartProps> = ({
         </svg>
 
         {/* Hover Tooltip Card if hovering non-peak point */}
-        {hoveredIndex !== null && hoveredIndex !== 4 && (
+        {hoveredIndex !== null && hoveredIndex !== 4 && points[hoveredIndex] && (
           <div
             className="absolute pointer-events-none bg-gray-900 text-white rounded-xl px-3 py-1.5 text-[11px] font-bold shadow-xl border border-gray-700 transition-all z-20"
             style={{

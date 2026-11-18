@@ -208,6 +208,7 @@ export const codesApi = {
     groupName: string;
     validityDays?: number;
     lessonId?: number | string;
+    unitId?: number | string;
     gradeLevelId?: number | string;
   }) => {
     return apiFetch<{
@@ -263,6 +264,31 @@ export const curriculumApi = {
     }>("/admin/curriculum");
   },
 
+  getFlatLessons: async () => {
+    return apiFetch<{
+      success: boolean;
+      data: {
+        id: string;
+        title: string;
+        unitTitle: string;
+        gradeTitle: string;
+        formattedTitle: string;
+        duration?: string;
+        type?: "lesson" | "unit";
+      }[];
+      units?: {
+        id: string;
+        title: string;
+        unitTitle?: string;
+        gradeTitle: string;
+        formattedTitle: string;
+        duration?: string;
+        type?: "lesson" | "unit";
+        lessonsCount?: number;
+      }[];
+    }>("/admin/curriculum/lessons");
+  },
+
   createGrade: async (data: { title: string; subtitle?: string }) => {
     return apiFetch<{ success: boolean; data: any; message: string }>(
       "/admin/curriculum/grades",
@@ -291,6 +317,23 @@ export const curriculumApi = {
       "/admin/curriculum/units",
       {
         method: "POST",
+        body: JSON.stringify(data),
+      }
+    );
+  },
+
+  updateUnit: async (
+    id: string | number,
+    data: {
+      title?: string;
+      subtitle?: string;
+      unit_number?: number;
+    }
+  ) => {
+    return apiFetch<{ success: boolean; data: any; message: string }>(
+      `/admin/curriculum/units/${id}`,
+      {
+        method: "PUT",
         body: JSON.stringify(data),
       }
     );
@@ -417,10 +460,12 @@ export const studentApi = {
     });
   },
 
-  getLecture: async (code: string) => {
+  getLecture: async (code: string, lessonId?: string | number) => {
+    const qs = lessonId ? `?lesson_id=${lessonId}` : "";
     return apiFetch<{
       success: boolean;
       code: string;
+      codeScope?: string;
       lesson: {
         id: string;
         title: string;
@@ -446,7 +491,7 @@ export const studentApi = {
       units: any[];
       savedNotes: { id: string; time: string; text: string }[];
       validity?: any;
-    }>(`/student/lecture/${encodeURIComponent(code)}`);
+    }>(`/student/lecture/${encodeURIComponent(code)}${qs}`);
   },
 
   updateProgress: async (payload: {

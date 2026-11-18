@@ -1,12 +1,13 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, memo } from "react";
 import { Copy, Check, BookOpen, Clock, CalendarClock, ShieldAlert, Sparkles } from "lucide-react";
 import { CodeItem } from "@/types/dashboard";
 
 interface CodesTableProps {
   codes: CodeItem[];
   selectedIds: string[];
+  isLoading?: boolean;
   onToggleSelect: (id: string) => void;
   onToggleSelectAll: () => void;
   onViewDetails: (code: CodeItem) => void;
@@ -16,9 +17,6 @@ interface CodesTableProps {
 
 /**
  * دالة حساب الأيام المتبقية لانتهاء صلاحية الكود بدقة:
- * - إذا كان منتهي: منتهي (0 يوم)
- * - إذا كان مستعمل ونشط: حساب الأيام المتبقية حتى تاريخ الانتهاء
- * - إذا كان جديد: إظهار كامل مدة الصلاحية المتاحة (يبدأ العد بعد التفعيل)
  */
 function calcRemainingDays(
   activatedAt?: string,
@@ -35,7 +33,6 @@ function calcRemainingDays(
     };
   }
 
-  // إذا تم استخدام وتفعيل الكود
   if (status === "used") {
     let expDate: Date | null = null;
     if (expiresAt) {
@@ -82,7 +79,6 @@ function calcRemainingDays(
     }
   }
 
-  // إذا كان الكود جديداً لم يُستخدم بعد (الصلاحية كاملة تبدأ عند أول تفعيل)
   const days = validityDays || 30;
   return {
     label: `فاضل ${days} ${days === 1 ? "يوم" : days === 2 ? "يومان" : days <= 10 ? "أيام" : "يوم"}`,
@@ -109,15 +105,207 @@ function formatDuration(duration?: string): string {
   return duration;
 }
 
-export const CodesTable: React.FC<CodesTableProps> = ({
+// Single Memoized Row Component
+interface CodeTableRowProps {
+  item: CodeItem;
+  isSelected: boolean;
+  copiedId: string | null;
+  onCopy: (id: string, text: string, e: React.MouseEvent) => void;
+  onToggleSelect: (id: string) => void;
+  onViewDetails: (code: CodeItem) => void;
+  onToggleStatus: (id: string) => void;
+  onDeleteCode: (id: string) => void;
+}
+
+const CodeTableRow = memo(function CodeTableRow({
+  item,
+  isSelected,
+  copiedId,
+  onCopy,
+  onToggleSelect,
+  onViewDetails,
+  onToggleStatus,
+  onDeleteCode,
+}: CodeTableRowProps) {
+  const remaining = calcRemainingDays(
+    item.activatedAt,
+    item.validityDays,
+    item.expiresAt,
+    item.status
+  );
+
+  const hasSpecificLesson =
+    item.lessonTitle &&
+    item.lessonTitle !== "كود عام (شامل المنهج)" &&
+    item.lessonTitle !== "عام";
+
+  return (
+    <tr
+      className={`transition-colors hover:bg-orange-50/20 ${
+        isSelected ? "bg-orange-50/40" : "bg-white"
+      }`}
+    >
+      {/* 1. Selection Checkbox */}
+      <td className="py-3.5 px-3 text-center">
+        <button
+          type="button"
+          onClick={() => onToggleSelect(item.id)}
+          className={`w-4 h-4 rounded-md border flex items-center justify-center transition-colors cursor-pointer mx-auto ${
+            isSelected
+              ? "bg-[#FF6A00] border-[#FF6A00] text-white"
+              : "bg-white border-gray-300 hover:border-gray-400"
+          }`}
+          aria-label={`تحديد ${item.code}`}
+        >
+          {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+        </button>
+      </td>
+
+      {/* 2. Unified Numeric Code */}
+      <td className="py-3.5 px-3">
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={(e) => onCopy(item.id, item.code, e)}
+            title="نسخ الكود"
+            className="p-1 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
+          >
+            {copiedId === item.id ? (
+              <Check className="w-3.5 h-3.5 text-emerald-600" />
+            ) : (
+              <Copy className="w-3.5 h-3.5" />
+            )}
+          </button>
+          <span className="font-mono font-bold text-xs sm:text-sm text-gray-900 bg-gray-100/90 px-2 py-0.5 rounded-lg border border-gray-200/60 tracking-wider">
+            {item.code}
+          </span>
+        </div>
+      </td>
+
+      {/* 3. Lesson Title */}
+      <td className="py-3.5 px-3">
+        {hasSpecificLesson ? (
+          <div className="flex items-center gap-1.5 max-w-[220px]" title={item.lessonTitle}>
+            <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0" />
+            <span className="text-xs font-bold text-indigo-900 truncate">
+              {item.lessonTitle}
+            </span>
+          </div>
+        ) : (
+          <span className="inline-block text-[11px] font-semibold text-gray-500 bg-gray-100/80 px-2 py-0.5 rounded-md">
+            كود عام (شامل المنهج)
+          </span>
+        )}
+      </td>
+
+      {/* 4. Lesson Duration */}
+      <td className="py-3.5 px-3 text-center">
+        {item.lessonDuration && item.lessonDuration !== "—" ? (
+          <span className="inline-flex items-center gap-1 text-xs font-semibold text-gray-700 bg-gray-50 border border-gray-200/70 px-2 py-0.5 rounded-md">
+            <Clock className="w-3 h-3 text-gray-400" />
+            {formatDuration(item.lessonDuration)}
+          </span>
+        ) : (
+          <span className="text-gray-400 text-xs">—</span>
+        )}
+      </td>
+
+      {/* 5. Group Name */}
+      <td className="py-3.5 px-3">
+        <span className="font-semibold text-gray-800 text-xs sm:text-sm block truncate max-w-[200px]" title={item.groupName}>
+          {item.groupName}
+        </span>
+      </td>
+
+      {/* 6. Validity Days */}
+      <td className="py-3.5 px-3 text-center">
+        <span className="font-mono font-bold text-gray-800 text-xs bg-gray-50 px-2 py-0.5 rounded-md border border-gray-200/60">
+          {item.validityDays} يوم
+        </span>
+      </td>
+
+      {/* 7. Remaining Days Badge */}
+      <td className="py-3.5 px-3 text-center">
+        <div className={`inline-flex flex-col items-center justify-center px-2.5 py-1 rounded-xl border ${remaining.badgeBg}`}>
+          <span className={`text-[11px] font-extrabold ${remaining.color} leading-tight`}>
+            {remaining.label}
+          </span>
+          <span className="text-[9px] text-gray-500 font-medium">
+            {remaining.subLabel}
+          </span>
+        </div>
+      </td>
+
+      {/* 8. Creation Date */}
+      <td className="py-3.5 px-3 text-center text-gray-500 font-mono text-xs">
+        {item.createdAt}
+      </td>
+
+      {/* 9. Status Badge */}
+      <td className="py-3.5 px-3 text-center">
+        {item.status === "new" && (
+          <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-200/80 text-[11px] font-extrabold px-2.5 py-1 rounded-full">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            جديد / متاح
+          </span>
+        )}
+        {item.status === "used" && (
+          <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 border border-blue-200/80 text-[11px] font-extrabold px-2.5 py-1 rounded-full">
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+            مستعمل / نشط
+          </span>
+        )}
+        {item.status === "expired" && (
+          <span className="inline-flex items-center gap-1 bg-red-50 text-red-700 border border-red-200/80 text-[11px] font-extrabold px-2.5 py-1 rounded-full">
+            <ShieldAlert className="w-3 h-3 text-red-500" />
+            منتهي الصلاحية
+          </span>
+        )}
+      </td>
+
+      {/* 10. Actions Buttons */}
+      <td className="py-3.5 px-3 text-center">
+        <div className="flex items-center justify-center gap-1.5">
+          {item.status === "expired" ? (
+            <button
+              type="button"
+              onClick={() => onDeleteCode(item.id)}
+              className="bg-white hover:bg-red-50 text-red-600 border border-gray-200 hover:border-red-200 text-xs font-semibold px-2 py-1 rounded-lg transition-colors cursor-pointer"
+            >
+              حذف
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => onToggleStatus(item.id)}
+              className="bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 text-xs font-semibold px-2 py-1 rounded-lg transition-colors cursor-pointer"
+            >
+              إيقاف
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => onViewDetails(item)}
+            className="bg-white hover:bg-orange-50 text-gray-800 hover:text-[#FF6A00] border border-gray-200 hover:border-orange-200 text-xs font-semibold px-2 py-1 rounded-lg transition-colors cursor-pointer"
+          >
+            تفاصيل
+          </button>
+        </div>
+      </td>
+    </tr>
+  );
+});
+
+export const CodesTable = memo(function CodesTable({
   codes,
   selectedIds,
+  isLoading = false,
   onToggleSelect,
   onToggleSelectAll,
   onViewDetails,
   onToggleStatus,
   onDeleteCode,
-}) => {
+}: CodesTableProps) {
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const handleCopy = (id: string, text: string, e: React.MouseEvent) => {
@@ -178,186 +366,66 @@ export const CodesTable: React.FC<CodesTableProps> = ({
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {codes.length === 0 ? (
+            {isLoading ? (
+              // Fast Skeleton Loading rows
+              Array.from({ length: 6 }).map((_, i) => (
+                <tr key={`skeleton-${i}`} className="animate-pulse">
+                  <td className="py-4 px-3 text-center">
+                    <div className="w-4 h-4 bg-gray-200 rounded mx-auto" />
+                  </td>
+                  <td className="py-4 px-3">
+                    <div className="w-24 h-5 bg-gray-200 rounded-lg" />
+                  </td>
+                  <td className="py-4 px-3">
+                    <div className="w-32 h-4 bg-gray-200 rounded" />
+                  </td>
+                  <td className="py-4 px-3 text-center">
+                    <div className="w-16 h-4 bg-gray-200 rounded mx-auto" />
+                  </td>
+                  <td className="py-4 px-3">
+                    <div className="w-36 h-4 bg-gray-200 rounded" />
+                  </td>
+                  <td className="py-4 px-3 text-center">
+                    <div className="w-12 h-4 bg-gray-200 rounded mx-auto" />
+                  </td>
+                  <td className="py-4 px-3 text-center">
+                    <div className="w-20 h-6 bg-gray-200 rounded-xl mx-auto" />
+                  </td>
+                  <td className="py-4 px-3 text-center">
+                    <div className="w-20 h-4 bg-gray-200 rounded mx-auto" />
+                  </td>
+                  <td className="py-4 px-3 text-center">
+                    <div className="w-20 h-6 bg-gray-200 rounded-full mx-auto" />
+                  </td>
+                  <td className="py-4 px-3 text-center">
+                    <div className="w-16 h-6 bg-gray-200 rounded-lg mx-auto" />
+                  </td>
+                </tr>
+              ))
+            ) : codes.length === 0 ? (
               <tr>
                 <td colSpan={10} className="py-12 text-center text-gray-400 text-sm font-medium">
                   لا توجد أكواد مسجلة مطابقة للبحث
                 </td>
               </tr>
             ) : (
-              codes.map((item) => {
-                const isSelected = selectedIds.includes(item.id);
-                const remaining = calcRemainingDays(
-                  item.activatedAt,
-                  item.validityDays,
-                  item.expiresAt,
-                  item.status
-                );
-
-                const hasSpecificLesson =
-                  item.lessonTitle &&
-                  item.lessonTitle !== "كود عام (شامل المنهج)" &&
-                  item.lessonTitle !== "عام";
-
-                return (
-                  <tr
-                    key={item.id}
-                    className={`transition-colors hover:bg-orange-50/20 ${
-                      isSelected ? "bg-orange-50/40" : "bg-white"
-                    }`}
-                  >
-                    {/* 1. Selection Checkbox */}
-                    <td className="py-3.5 px-3 text-center">
-                      <button
-                        type="button"
-                        onClick={() => onToggleSelect(item.id)}
-                        className={`w-4 h-4 rounded-md border flex items-center justify-center transition-colors cursor-pointer mx-auto ${
-                          isSelected
-                            ? "bg-[#FF6A00] border-[#FF6A00] text-white"
-                            : "bg-white border-gray-300 hover:border-gray-400"
-                        }`}
-                        aria-label={`تحديد ${item.code}`}
-                      >
-                        {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
-                      </button>
-                    </td>
-
-                    {/* 2. Unified Numeric Code */}
-                    <td className="py-3.5 px-3">
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={(e) => handleCopy(item.id, item.code, e)}
-                          title="نسخ الكود"
-                          className="p-1 text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-md transition-colors cursor-pointer"
-                        >
-                          {copiedId === item.id ? (
-                            <Check className="w-3.5 h-3.5 text-emerald-600" />
-                          ) : (
-                            <Copy className="w-3.5 h-3.5" />
-                          )}
-                        </button>
-                        <span className="font-mono font-bold text-xs sm:text-sm text-gray-900 bg-gray-100/90 px-2 py-0.5 rounded-lg border border-gray-200/60 tracking-wider">
-                          {item.code}
-                        </span>
-                      </div>
-                    </td>
-
-                    {/* 3. Lesson Title (تبع أنهي درس) */}
-                    <td className="py-3.5 px-3">
-                      {hasSpecificLesson ? (
-                        <div className="flex items-center gap-1.5 max-w-[220px]" title={item.lessonTitle}>
-                          <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 shrink-0" />
-                          <span className="text-xs font-bold text-indigo-900 truncate">
-                            {item.lessonTitle}
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="inline-block text-[11px] font-semibold text-gray-500 bg-gray-100/80 px-2 py-0.5 rounded-md">
-                          كود عام (شامل المنهج)
-                        </span>
-                      )}
-                    </td>
-
-                    {/* 4. Lesson Duration (مدة الدرس) */}
-                    <td className="py-3.5 px-3 text-center">
-                      {item.lessonDuration && item.lessonDuration !== "—" ? (
-                        <span className="inline-flex items-center gap-1 text-xs font-bold text-gray-700 bg-gray-50 px-2 py-1 rounded-lg border border-gray-200/70">
-                          <Clock className="w-3 h-3 text-[#FF6A00]" />
-                          {formatDuration(item.lessonDuration)}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-gray-400">—</span>
-                      )}
-                    </td>
-
-                    {/* 5. Group Name & Center */}
-                    <td className="py-3.5 px-3 text-xs font-bold text-gray-800 max-w-[180px] truncate" title={item.groupName}>
-                      {item.groupName}
-                    </td>
-
-                    {/* 6. Validity Days (مدة الصلاحية) */}
-                    <td className="py-3.5 px-3 text-center">
-                      <span className="inline-block text-xs font-bold text-gray-900 bg-gray-50 px-2.5 py-1 rounded-lg border border-gray-200/60">
-                        {item.validityDays} يوم
-                      </span>
-                    </td>
-
-                    {/* 7. Remaining Days (فاضل كام يوم عشان ينتهي) */}
-                    <td className="py-3.5 px-3 text-center">
-                      <div className={`inline-flex flex-col items-center justify-center px-2.5 py-1 rounded-lg border ${remaining.badgeBg}`}>
-                        <span className={`text-xs font-extrabold ${remaining.color}`}>
-                          {remaining.label}
-                        </span>
-                        <span className="text-[10px] text-gray-500 font-medium leading-tight">
-                          {remaining.subLabel}
-                        </span>
-                      </div>
-                    </td>
-
-                    {/* 8. Creation Date */}
-                    <td className="py-3.5 px-3 text-xs text-gray-600 font-medium text-center">
-                      {item.createdAt}
-                    </td>
-
-                    {/* 9. Status Badge */}
-                    <td className="py-3.5 px-3 text-center">
-                      {item.status === "new" && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-[#FF6A00] text-white shadow-2xs">
-                          <span className="w-1.5 h-1.5 rounded-full bg-white" />
-                          جديد / غير مستخدم
-                        </span>
-                      )}
-                      {item.status === "used" && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-black text-white shadow-2xs">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
-                          مستعمل / نشط
-                        </span>
-                      )}
-                      {item.status === "expired" && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-gray-200 text-gray-700">
-                          <span className="w-1.5 h-1.5 rounded-full bg-gray-500" />
-                          منتهي الصلاحية
-                        </span>
-                      )}
-                    </td>
-
-                    {/* 10. Actions */}
-                    <td className="py-3.5 px-3 text-center">
-                      <div className="flex items-center justify-center gap-1.5">
-                        {item.status === "expired" ? (
-                          <button
-                            type="button"
-                            onClick={() => onDeleteCode(item.id)}
-                            className="bg-white hover:bg-red-50 text-red-600 border border-gray-200 hover:border-red-200 text-xs font-semibold px-2 py-1 rounded-lg transition-colors cursor-pointer"
-                          >
-                            حذف
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => onToggleStatus(item.id)}
-                            className="bg-white hover:bg-gray-50 text-gray-700 border border-gray-200 text-xs font-semibold px-2 py-1 rounded-lg transition-colors cursor-pointer"
-                          >
-                            إيقاف
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => onViewDetails(item)}
-                          className="bg-white hover:bg-orange-50 text-gray-800 hover:text-[#FF6A00] border border-gray-200 hover:border-orange-200 text-xs font-semibold px-2 py-1 rounded-lg transition-colors cursor-pointer"
-                        >
-                          تفاصيل
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })
+              codes.map((item) => (
+                <CodeTableRow
+                  key={item.id}
+                  item={item}
+                  isSelected={selectedIds.includes(item.id)}
+                  copiedId={copiedId}
+                  onCopy={handleCopy}
+                  onToggleSelect={onToggleSelect}
+                  onViewDetails={onViewDetails}
+                  onToggleStatus={onToggleStatus}
+                  onDeleteCode={onDeleteCode}
+                />
+              ))
             )}
           </tbody>
         </table>
       </div>
     </div>
   );
-};
+});

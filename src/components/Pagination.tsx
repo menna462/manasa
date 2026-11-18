@@ -10,6 +10,8 @@ interface PaginationProps {
   startIndex: number;
   endIndex: number;
   onPageChange: (page: number) => void;
+  itemsPerPage?: number;
+  onItemsPerPageChange?: (items: number) => void;
 }
 
 /**
@@ -61,6 +63,8 @@ export const Pagination: React.FC<PaginationProps> = ({
   startIndex = 1,
   endIndex = 5,
   onPageChange,
+  itemsPerPage = 20,
+  onItemsPerPageChange,
 }) => {
   // إذا لم تكن هناك أي أكواد على الإطلاق
   if (totalItems === 0) {
@@ -75,21 +79,41 @@ export const Pagination: React.FC<PaginationProps> = ({
   const pages = getPaginationRange(currentPage, safeTotalPages);
 
   return (
-    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 py-3.5 px-3 text-xs sm:text-sm bg-white rounded-xl border border-gray-100 shadow-2xs mt-2">
-      {/* Right Side: Range Counter */}
-      <div className="text-gray-600 font-medium text-xs sm:text-sm">
-        <span>عرض </span>
-        <span className="font-bold text-gray-900">{startIndex}</span>
-        <span> إلى </span>
-        <span className="font-bold text-gray-900">{endIndex}</span>
-        <span> من أصل </span>
-        <span className="font-bold text-gray-900">
-          {totalItems.toLocaleString("ar-EG")}
-        </span>
-        <span> كود مسجل</span>
+    <div className="flex flex-col md:flex-row items-center justify-between gap-4 py-3.5 px-4 text-xs sm:text-sm bg-white rounded-xl border border-gray-100 shadow-2xs mt-2">
+      {/* Right Side: Range Counter & Rows Per Page Selector */}
+      <div className="flex items-center gap-4 flex-wrap text-gray-600 font-medium">
+        <div>
+          <span>عرض </span>
+          <span className="font-bold text-gray-900">{startIndex}</span>
+          <span> إلى </span>
+          <span className="font-bold text-gray-900">{endIndex}</span>
+          <span> من أصل </span>
+          <span className="font-bold text-gray-900">
+            {totalItems.toLocaleString("ar-EG")}
+          </span>
+          <span> كود</span>
+        </div>
+
+        {/* Rows per page dropdown */}
+        {onItemsPerPageChange && (
+          <div className="flex items-center gap-1.5 bg-[#F1F3F5] rounded-lg px-2.5 py-1 text-xs font-semibold text-gray-800">
+            <span>صفوف لكل صفحة:</span>
+            <select
+              value={itemsPerPage >= 99999 ? 99999 : itemsPerPage}
+              onChange={(e) => onItemsPerPageChange(Number(e.target.value))}
+              className="bg-transparent font-extrabold text-[#FF6A00] focus:outline-hidden cursor-pointer"
+            >
+              <option value={10}>10</option>
+              <option value={20}>20</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+              <option value={99999}>الكل (All)</option>
+            </select>
+          </div>
+        )}
       </div>
 
-      {/* Left Side: Pagination Navigation Buttons (only when totalPages > 1) */}
+      {/* Left Side: Pagination Navigation Buttons */}
       {safeTotalPages > 1 ? (
         <div className="flex items-center gap-1.5" dir="rtl">
           {/* زر الصفحة السابقة (يمين في واجهة RTL) */}
@@ -152,9 +176,9 @@ export const Pagination: React.FC<PaginationProps> = ({
           </button>
         </div>
       ) : (
-        /* في حال صفحة واحدة فقط */
+        /* في حال صفحة واحدة فقط أو عرض الكل */
         <span className="text-xs text-gray-400 font-semibold bg-gray-50 px-3 py-1 rounded-lg border border-gray-100">
-          صفحة 1 من 1
+          {itemsPerPage >= 99999 ? `عرض كافة النتائج (${totalItems})` : "صفحة 1 من 1"}
         </span>
       )}
     </div>

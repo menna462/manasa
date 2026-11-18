@@ -6,63 +6,114 @@ import { CodeItem } from "@/types/dashboard";
 import { GradeLevel } from "@/types/curriculum";
 import { codesApi, curriculumApi } from "@/lib/api";
 
-interface GenerateFormProps {
-  onGenerate: (newCodes: CodeItem[], count: number) => void;
-}
-
-interface FlatLessonOption {
+export interface FlatLessonOption {
   id: string;
   title: string;
-  unitTitle: string;
+  unitTitle?: string;
   gradeTitle: string;
+  formattedTitle?: string;
   duration?: string;
+  type?: "lesson" | "unit";
+  lessonsCount?: number;
 }
 
-export const GenerateForm: React.FC<GenerateFormProps> = ({ onGenerate }) => {
+interface GenerateFormProps {
+  onGenerate: (newCodes: CodeItem[], count: number) => void;
+  lessons?: FlatLessonOption[];
+  units?: FlatLessonOption[];
+  isLoadingLessons?: boolean;
+}
+
+export const GenerateForm: React.FC<GenerateFormProps> = ({
+  onGenerate,
+  lessons: externalLessons,
+  units: externalUnits,
+  isLoadingLessons: externalLoading,
+}) => {
   const [count, setCount] = useState<number>(50);
   const [validityDays, setValidityDays] = useState<number>(30);
   const [groupName, setGroupName] = useState<string>("");
-  const [selectedLessonId, setSelectedLessonId] = useState<string>("");
-  const [lessonOptions, setLessonOptions] = useState<FlatLessonOption[]>([]);
-  const [isLoadingLessons, setIsLoadingLessons] = useState<boolean>(true);
+  // selectedValue format: "lesson:ID" or "unit:ID" or "" (general)
+  const [selectedValue, setSelectedValue] = useState<string>("");
+  const [internalLessons, setInternalLessons] = useState<FlatLessonOption[]>([]);
+  const [internalUnits, setInternalUnits] = useState<FlatLessonOption[]>([]);
+  const [isInternalLoading, setIsInternalLoading] = useState<boolean>(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Load real curriculum tree to populate lessons dropdown
+  // Use external data if provided, otherwise internal
+  const lessonOptions = externalLessons !== undefined ? externalLessons : internalLessons;
+  const unitOptions = externalUnits !== undefined ? externalUnits : internalUnits;
+  const isLoading = externalLoading !== undefined ? externalLoading : isInternalLoading;
+
+  // Fallback: load curriculum directly if no external data provided
   useEffect(() => {
+    if (externalLessons !== undefined) return;
+
     const fetchCurriculum = async () => {
       try {
-        setIsLoadingLessons(true);
-        const res = await curriculumApi.getTree();
+        setIsInternalLoading(true);
+        const res = await curriculumApi.getFlatLessons();
         if (res.data && Array.isArray(res.data)) {
-          const flatList: FlatLessonOption[] = [];
-          res.data.forEach((grade: GradeLevel) => {
-            (grade.units || []).forEach((unit) => {
-              (unit.lessons || []).forEach((lesson) => {
-                flatList.push({
-                  id: String(lesson.id),
-                  title: lesson.title,
+          setInternalLessons(res.data.map((l: FlatLessonOption) => ({ ...l, type: l.type || "lesson" })));
+        }
+        // Also load units if available
+        if (res.units && Array.isArray(res.units)) {
+          setInternalUnits(res.units.map((u: FlatLessonOption) => ({ ...u, type: "unit" })));
+        } else {
+          // Fallback to tree if flat endpoint doesn't return units
+          const treeRes = await curriculumApi.getTree();
+          if (treeRes.data && Array.isArray(treeRes.data)) {
+            const flatLessons: FlatLessonOption[] = [];
+            const flatUnits: FlatLessonOption[] = [];
+            treeRes.data.forEach((grade: GradeLevel) => {
+              (grade.units || []).forEach((unit) => {
+                flatUnits.push({
+                  id: String(unit.id),
+                  title: unit.title,
                   unitTitle: unit.title,
                   gradeTitle: grade.title,
-                  duration: lesson.duration,
+                  formattedTitle: `${grade.title} ◄ ${unit.title} (${unit.lessons?.length || 0} دروس)`,
+                  type: "unit",
+                  lessonsCount: unit.lessons?.length || 0,
+                });
+                (unit.lessons || []).forEach((lesson) => {
+                  flatLessons.push({
+                    id: String(lesson.id),
+                    title: lesson.title,
+                    unitTitle: unit.title,
+                    gradeTitle: grade.title,
+                    formattedTitle: `${grade.title} ◄ ${lesson.title}`,
+                    duration: lesson.duration,
+                    type: "lesson",
+                  });
                 });
               });
             });
-          });
-          setLessonOptions(flatList);
-          // Set first lesson by default if available
-          if (flatList.length > 0) {
-            setSelectedLessonId(flatList[0].id);
+            setInternalLessons(flatLessons);
+            setInternalUnits(flatUnits);
           }
         }
-      } catch (err) {
-        console.warn("Could not load curriculum for generate form:", err);
+      } catch {
+        // silent fail
       } finally {
-        setIsLoadingLessons(false);
+        setIsInternalLoading(false);
       }
     };
 
     fetchCurriculum();
-  }, []);
+  }, [externalLessons]);
+
+  // Keep selected value synced with available options
+  useEffect(() => {
+    if (selectedValue) {
+      const [type, id] = selectedValue.split(":");
+      if (type === "lesson" && !lessonOptions.some((opt) => opt.id === id)) {
+        setSelectedValue("");
+      } else if (type === "unit" && !unitOptions.some((opt) => opt.id === id)) {
+        setSelectedValue("");
+      }
+    }
+  }, [lessonOptions, unitOptions, selectedValue]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -78,11 +129,25 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({ onGenerate }) => {
     setIsSubmitting(true);
 
     try {
+      // Parse selected value
+      let lessonId: number | undefined;
+      let unitId: number | undefined;
+
+      if (selectedValue) {
+        const [type, id] = selectedValue.split(":");
+        if (type === "lesson") {
+          lessonId = Number(id);
+        } else if (type === "unit") {
+          unitId = Number(id);
+        }
+      }
+
       const res = await codesApi.generate({
         count,
         groupName: groupName.trim(),
         validityDays: validityDays || 30,
-        lessonId: selectedLessonId ? Number(selectedLessonId) : undefined,
+        lessonId,
+        unitId,
       });
 
       if (res.data) {
@@ -95,6 +160,16 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({ onGenerate }) => {
       setIsSubmitting(false);
     }
   };
+
+  // Determine the selected scope label for the badge
+  const getScopeBadge = () => {
+    if (!selectedValue) return { label: "كود عام", color: "bg-gray-100 text-gray-600" };
+    const [type] = selectedValue.split(":");
+    if (type === "unit") return { label: "وحدة كاملة", color: "bg-indigo-50 text-indigo-700" };
+    return { label: "درس محدد", color: "bg-orange-50 text-[#FF6A00]" };
+  };
+
+  const scopeBadge = getScopeBadge();
 
   return (
     <div className="bg-white rounded-2xl p-6 border border-gray-100/90 shadow-[0_2px_10px_rgba(0,0,0,0.03)] my-5">
@@ -109,49 +184,67 @@ export const GenerateForm: React.FC<GenerateFormProps> = ({ onGenerate }) => {
               توليد دفعة أكواد جديدة
             </h3>
             <p className="text-xs text-gray-500 mt-0.5">
-              حدد المحاضرة المستهدفة والمعايير التالية لتوليد بطاقات الدخول فورياً للسنتر أو المنصة
+              حدد الوحدة أو المحاضرة المستهدفة والمعايير التالية لتوليد بطاقات الدخول فورياً
             </p>
           </div>
         </div>
 
-        <div>
+        <div className="flex items-center gap-2">
+          <span className={`inline-block text-xs font-bold px-3 py-1.5 rounded-lg border ${scopeBadge.color}`}>
+            {scopeBadge.label}
+          </span>
           <span className="inline-block bg-orange-50 text-[#FF6A00] text-xs font-mono font-bold px-3 py-1.5 rounded-lg border border-orange-200/60">
-            صيغة الكود: XXXXXXXX (8 أرقام)
+            صيغة الكود: XXXXXXXX
           </span>
         </div>
       </div>
 
       {/* Inputs Form */}
       <form onSubmit={handleSubmit} className="space-y-4">
-        {/* Row 1: Lesson Selection, Count, Validity */}
+        {/* Row 1: Content Selection, Count, Validity */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 items-end">
-          {/* 1. اختيار المحاضرة أو الدرس المطلوب */}
+          {/* 1. اختيار المحتوى المرتبط بالكود */}
           <div className="lg:col-span-6">
             <label className="block text-xs font-bold text-gray-800 mb-1.5">
               <span className="flex items-center gap-1.5">
                 <BookOpen className="w-3.5 h-3.5 text-[#FF6A00]" />
-                المحاضرة أو الدرس المرتبط بالكود <span className="text-[#FF6A00]">*</span>
+                المحتوى المرتبط بالكود (وحدة أو درس) <span className="text-[#FF6A00]">*</span>
               </span>
             </label>
             <div className="bg-[#F1F3F5] rounded-xl px-3 py-2 border border-transparent focus-within:border-[#FF6A00] focus-within:bg-white transition-all">
               <select
-                value={selectedLessonId}
-                onChange={(e) => setSelectedLessonId(e.target.value)}
-                disabled={isLoadingLessons}
+                value={selectedValue}
+                onChange={(e) => setSelectedValue(e.target.value)}
+                disabled={isLoading}
                 className="w-full bg-transparent text-gray-900 font-semibold focus:outline-hidden text-xs sm:text-sm cursor-pointer"
               >
-                {isLoadingLessons ? (
-                  <option value="">جاري تحميل المحاضرات من المنهج...</option>
-                ) : lessonOptions.length === 0 ? (
-                  <option value="">لا توجد محاضرات في المنهج (كود عام)</option>
+                {isLoading ? (
+                  <option value="">جاري تحميل المنهج...</option>
                 ) : (
                   <>
-                    <option value="">-- كود تفعيل عام (غير مقيد بدرس محدد) --</option>
-                    {lessonOptions.map((opt) => (
-                      <option key={opt.id} value={opt.id}>
-                        {opt.gradeTitle} ◄ {opt.title} {opt.duration ? `(${opt.duration})` : ""}
-                      </option>
-                    ))}
+                    <option value="">— كود تفعيل عام (غير مقيد بوحدة أو درس محدد) —</option>
+
+                    {/* قسم الوحدات */}
+                    {unitOptions.length > 0 && (
+                      <optgroup label="📦 الوحدات (تفعيل الوحدة بكل دروسها)">
+                        {unitOptions.map((opt) => (
+                          <option key={`unit:${opt.id}`} value={`unit:${opt.id}`}>
+                            🔷 {opt.formattedTitle || `${opt.gradeTitle} ◄ ${opt.title}`}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+
+                    {/* قسم الدروس الفردية */}
+                    {lessonOptions.length > 0 && (
+                      <optgroup label="📖 الدروس الفردية (تفعيل درس واحد فقط)">
+                        {lessonOptions.map((opt) => (
+                          <option key={`lesson:${opt.id}`} value={`lesson:${opt.id}`}>
+                            {opt.formattedTitle || `${opt.gradeTitle} ◄ ${opt.title}`}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
                   </>
                 )}
               </select>

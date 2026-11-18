@@ -1,24 +1,71 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
-import { FileSpreadsheet, FileText, X } from "lucide-react";
+import React, { useState, useMemo, useCallback, useEffect } from "react";
+import dynamic from "next/dynamic";
+import { FileSpreadsheet, FileText, X, Loader2 } from "lucide-react";
+import { exportCodesToPdf } from "@/lib/pdf";
 import { Navbar } from "@/components/Navbar";
 import { HeaderBanner } from "@/components/HeaderBanner";
 import { StatCards } from "@/components/StatCards";
-import { GenerateForm } from "@/components/GenerateForm";
+import { GenerateForm, FlatLessonOption } from "@/components/GenerateForm";
 import { Toolbar } from "@/components/Toolbar";
 import { BulkActionBar } from "@/components/BulkActionBar";
 import { CodesTable } from "@/components/CodesTable";
 import { Pagination } from "@/components/Pagination";
 import { Footer } from "@/components/Footer";
-import { CodeDetailsModal } from "@/components/CodeDetailsModal";
-import { PrintCardsModal } from "@/components/PrintCardsModal";
 import { Toast, ToastMessage } from "@/components/Toast";
-import { CurriculumView } from "@/components/curriculum/CurriculumView";
-import { AnalyticsView } from "@/components/analytics/AnalyticsView";
-import { AdminTeamView } from "@/components/admin/AdminTeamView";
 import { CodeItem, DashboardStats } from "@/types/dashboard";
-import { codesApi, adminApi, getAdminToken } from "@/lib/api";
+import { codesApi, adminApi, curriculumApi, getAdminToken } from "@/lib/api";
+
+// Lazy-loaded heavy components & modals (saves bundle size and boosts initial load speed)
+const CodeDetailsModal = dynamic(
+  () => import("@/components/CodeDetailsModal").then((mod) => mod.CodeDetailsModal),
+  { ssr: false }
+);
+
+const PrintCardsModal = dynamic(
+  () => import("@/components/PrintCardsModal").then((mod) => mod.PrintCardsModal),
+  { ssr: false }
+);
+
+const CurriculumView = dynamic(
+  () => import("@/components/curriculum/CurriculumView").then((mod) => mod.CurriculumView),
+  {
+    loading: () => (
+      <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl border border-gray-100 shadow-xs">
+        <Loader2 className="w-8 h-8 text-[#FF6A00] animate-spin mb-3" />
+        <span className="text-xs font-bold text-gray-600">جاري تحميل إدارة المنهج...</span>
+      </div>
+    ),
+    ssr: false,
+  }
+);
+
+const AnalyticsView = dynamic(
+  () => import("@/components/analytics/AnalyticsView").then((mod) => mod.AnalyticsView),
+  {
+    loading: () => (
+      <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl border border-gray-100 shadow-xs">
+        <Loader2 className="w-8 h-8 text-[#FF6A00] animate-spin mb-3" />
+        <span className="text-xs font-bold text-gray-600">جاري تحميل لوحة الإحصائيات والتقارير...</span>
+      </div>
+    ),
+    ssr: false,
+  }
+);
+
+const AdminTeamView = dynamic(
+  () => import("@/components/admin/AdminTeamView").then((mod) => mod.AdminTeamView),
+  {
+    loading: () => (
+      <div className="flex flex-col items-center justify-center py-20 bg-white rounded-2xl border border-gray-100 shadow-xs">
+        <Loader2 className="w-8 h-8 text-[#FF6A00] animate-spin mb-3" />
+        <span className="text-xs font-bold text-gray-600">جاري تحميل فريق الإدارة...</span>
+      </div>
+    ),
+    ssr: false,
+  }
+);
 
 export default function AdminDashboardPage() {
   // Navigation: "codes" as active tab (توليد وإدارة الأكواد)
@@ -27,10 +74,10 @@ export default function AdminDashboardPage() {
     codes: true,
   });
 
-  const handleTabChange = (tab: string) => {
-    setActiveTab(tab);
-    setVisitedTabs((prev) => (prev[tab] ? prev : { ...prev, [tab]: true }));
-  };
+  // Real curriculum lessons for code generation
+  const [lessonsList, setLessonsList] = useState<FlatLessonOption[]>([]);
+  const [unitsList, setUnitsList] = useState<FlatLessonOption[]>([]);
+  const [isLoadingLessons, setIsLoadingLessons] = useState<boolean>(true);
 
   // Dashboard Codes State - from real database
   const [codes, setCodes] = useState<CodeItem[]>([]);
@@ -51,20 +98,102 @@ export default function AdminDashboardPage() {
 
   // Pagination
   const [currentPage, setCurrentPage] = useState<number>(1);
-  const itemsPerPage = 10;
+  const [itemsPerPage, setItemsPerPage] = useState<number>(20);
 
-  // Reset to page 1 when search or filter changes
-  React.useEffect(() => {
+  // Modals & Feedback
+  const [detailItem, setDetailItem] = useState<CodeItem | null>(null);
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState<boolean>(false);
+  const [printCodesList, setPrintCodesList] = useState<CodeItem[]>([]);
+  const [toast, setToast] = useState<ToastMessage | null>(null);
+  const [postGenerateCodes, setPostGenerateCodes] = useState<CodeItem[] | null>(null);
+
+  const showToast = useCallback((text: string, type: "success" | "error" | "info" = "success") => {
+    setToast({
+      id: String(Date.now()),
+      type,
+      text,
+    });
+  }, []);
+
+  // Fetch real flat lessons list
+  const loadLessons = useCallback(async () => {
+    setIsLoadingLessons(true);
+    try {
+      const res = await curriculumApi.getFlatLessons();
+      if (res.data && Array.isArray(res.data)) {
+        setLessonsList(res.data);
+      }
+      if (res.units && Array.isArray(res.units)) {
+        setUnitsList(res.units);
+      } else {
+        const treeRes = await curriculumApi.getTree();
+        if (treeRes.data && Array.isArray(treeRes.data)) {
+          const flatLessons: FlatLessonOption[] = [];
+          const flatUnits: FlatLessonOption[] = [];
+          treeRes.data.forEach((grade) => {
+            (grade.units || []).forEach((unit) => {
+              flatUnits.push({
+                id: String(unit.id),
+                title: unit.title,
+                unitTitle: unit.title,
+                gradeTitle: grade.title,
+                formattedTitle: `${grade.title} ◄ ${unit.title} (${unit.lessons?.length || 0} دروس)`,
+                type: "unit",
+                lessonsCount: unit.lessons?.length || 0,
+              });
+              (unit.lessons || []).forEach((lesson) => {
+                flatLessons.push({
+                  id: String(lesson.id),
+                  title: lesson.title,
+                  unitTitle: unit.title,
+                  gradeTitle: grade.title,
+                  formattedTitle: `${grade.title} ◄ ${lesson.title}`,
+                  duration: lesson.duration,
+                  type: "lesson",
+                });
+              });
+            });
+          });
+          if (!res.data || !Array.isArray(res.data)) {
+            setLessonsList(flatLessons);
+          }
+          setUnitsList(flatUnits);
+        }
+      }
+    } catch {
+      // Handled silently
+    } finally {
+      setIsLoadingLessons(false);
+    }
+  }, []);
+
+  const handleTabChange = useCallback((tab: string) => {
+    setActiveTab(tab);
+    setVisitedTabs((prev) => (prev[tab] ? prev : { ...prev, [tab]: true }));
+    if (tab === "codes") {
+      loadLessons();
+    }
+  }, [loadLessons]);
+
+  const handleItemsPerPageChange = useCallback((val: number) => {
+    setItemsPerPage(val);
     setCurrentPage(1);
-  }, [searchQuery, statusFilter]);
+  }, []);
+
+  // Reset to page 1 when search, filter or rows-per-page changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, statusFilter, itemsPerPage]);
 
   // Check authentication & load real codes and stats on mount
-  React.useEffect(() => {
+  useEffect(() => {
     const token = getAdminToken();
     if (!token) {
       window.location.href = "/admin/login";
       return;
     }
+
+    let isMounted = true;
 
     const fetchData = async () => {
       setIsLoadingData(true);
@@ -73,6 +202,8 @@ export default function AdminDashboardPage() {
           codesApi.getCodes({ per_page: 100 }),
           codesApi.getStats(),
         ]);
+
+        if (!isMounted) return;
 
         if (codesRes.status === "fulfilled" && Array.isArray(codesRes.value.data)) {
           setCodes(codesRes.value.data);
@@ -90,34 +221,26 @@ export default function AdminDashboardPage() {
           setStats(statsRes.value);
         }
       } catch (err: any) {
+        if (!isMounted) return;
         if (err?.message?.includes("401") || err?.message?.includes("Unauthenticated")) {
           adminApi.logout();
           window.location.href = "/admin/login";
           return;
         }
-        console.warn("Could not load backend data:", err);
       } finally {
-        setIsLoadingData(false);
+        if (isMounted) {
+          setIsLoadingData(false);
+        }
       }
     };
 
     fetchData();
-  }, []);
+    loadLessons();
 
-  // Modals & Feedback
-  const [detailItem, setDetailItem] = useState<CodeItem | null>(null);
-  const [isPrintModalOpen, setIsPrintModalOpen] = useState<boolean>(false);
-  const [printCodesList, setPrintCodesList] = useState<CodeItem[]>([]);
-  const [toast, setToast] = useState<ToastMessage | null>(null);
-  const [postGenerateCodes, setPostGenerateCodes] = useState<CodeItem[] | null>(null);
-
-  const showToast = (text: string, type: "success" | "error" | "info" = "success") => {
-    setToast({
-      id: String(Date.now()),
-      type,
-      text,
-    });
-  };
+    return () => {
+      isMounted = false;
+    };
+  }, [loadLessons]);
 
   // Filtered Codes
   const filteredCodes = useMemo(() => {
@@ -136,14 +259,21 @@ export default function AdminDashboardPage() {
 
   // Paginated Codes
   const paginatedCodes = useMemo(() => {
+    if (itemsPerPage >= 99999) {
+      return filteredCodes;
+    }
     const start = (currentPage - 1) * itemsPerPage;
     return filteredCodes.slice(start, start + itemsPerPage);
   }, [filteredCodes, currentPage, itemsPerPage]);
 
-  const totalPages = Math.max(1, Math.ceil(filteredCodes.length / itemsPerPage));
+  const totalPages = useMemo(() => {
+    return itemsPerPage >= 99999
+      ? 1
+      : Math.max(1, Math.ceil(filteredCodes.length / itemsPerPage));
+  }, [filteredCodes.length, itemsPerPage]);
 
   // Handlers for Codes
-  const handleGenerate = async (newGenerated: CodeItem[], requestedCount: number) => {
+  const handleGenerate = useCallback(async (newGenerated: CodeItem[], requestedCount: number) => {
     setCodes((prev) => [...newGenerated, ...prev]);
     try {
       const freshStats = await codesApi.getStats();
@@ -158,31 +288,35 @@ export default function AdminDashboardPage() {
       }));
     }
     showToast(`تم توليد ${requestedCount} كود جديد بنجاح في قاعدة البيانات وتحديث الإحصائيات!`, "success");
-    // Show post-generation export dialog
     setPostGenerateCodes(newGenerated);
-  };
+  }, [showToast]);
 
-  const handleToggleSelect = (id: string) => {
+  const handleToggleSelect = useCallback((id: string) => {
     setSelectedIds((prev) =>
       prev.includes(id) ? prev.filter((i) => i !== id) : [...prev, id]
     );
-  };
+  }, []);
 
-  const handleToggleSelectAll = () => {
+  const handleToggleSelectAll = useCallback(() => {
     const currentVisibleIds = paginatedCodes.map((c) => c.id);
-    const allSelected = currentVisibleIds.every((id) => selectedIds.includes(id));
+    const allSelected = currentVisibleIds.length > 0 && currentVisibleIds.every((id) => selectedIds.includes(id));
     if (allSelected) {
       setSelectedIds((prev) => prev.filter((id) => !currentVisibleIds.includes(id)));
     } else {
       setSelectedIds((prev) => Array.from(new Set([...prev, ...currentVisibleIds])));
     }
-  };
+  }, [paginatedCodes, selectedIds]);
 
-  const handleClearSelection = () => {
+  const handleClearSelection = useCallback(() => {
     setSelectedIds([]);
-  };
+  }, []);
 
-  const handleDeleteCode = async (id: string) => {
+  const handleSelectAllFiltered = useCallback(() => {
+    setSelectedIds(filteredCodes.map((c) => c.id));
+    showToast(`تم تحديد كافة الأكواد (${filteredCodes.length} كود)`, "info");
+  }, [filteredCodes, showToast]);
+
+  const handleDeleteCode = useCallback(async (id: string) => {
     const itemToDelete = codes.find((c) => c.id === id);
     if (!itemToDelete) return;
 
@@ -201,12 +335,12 @@ export default function AdminDashboardPage() {
 
     try {
       await codesApi.deleteCode(id);
-    } catch (err) {
-      console.warn("Error deleting code from API:", err);
+    } catch {
+      // Ignored
     }
-  };
+  }, [codes, showToast]);
 
-  const handleDeleteSelected = async () => {
+  const handleDeleteSelected = useCallback(async () => {
     if (selectedIds.length === 0) return;
     const confirmDelete = window.confirm(
       `هل أنت متأكد من رغبتك في حذف ${selectedIds.length} كود محدد؟`
@@ -228,12 +362,12 @@ export default function AdminDashboardPage() {
 
     try {
       await codesApi.bulkDelete(idsToDelete);
-    } catch (err) {
-      console.warn("Error bulk deleting from API:", err);
+    } catch {
+      // Ignored
     }
-  };
+  }, [selectedIds, showToast]);
 
-  const handleToggleStatus = async (id: string) => {
+  const handleToggleStatus = useCallback(async (id: string) => {
     const targetItem = codes.find((c) => c.id === id);
     if (!targetItem) return;
     const nextStatus = targetItem.status === "new" ? "expired" : "new";
@@ -250,13 +384,13 @@ export default function AdminDashboardPage() {
 
     try {
       await codesApi.bulkUpdateStatus([id], nextStatus);
-    } catch (err) {
-      console.warn("Error updating code status in API:", err);
+    } catch {
+      // Ignored
     }
-  };
+  }, [codes, showToast]);
 
   // Export to Excel
-  const handleExportExcel = (itemsToExport?: CodeItem[]) => {
+  const handleExportExcel = useCallback((itemsToExport?: CodeItem[]) => {
     const list = itemsToExport && itemsToExport.length > 0 ? itemsToExport : codes;
     const headers = ["الكود الموحد", "اسم المجموعة والسنتر", "تاريخ التوليد", "مدة الصلاحية", "الحالة"];
     const rows = list.map((item) => [
@@ -278,31 +412,57 @@ export default function AdminDashboardPage() {
     document.body.removeChild(link);
 
     showToast(`تم تصدير ${list.length} كود إلى ملف Excel بنجاح`, "success");
-  };
+  }, [codes, showToast]);
 
-  const handleExportSelected = () => {
+  const handleExportSelected = useCallback(() => {
     const selectedList = codes.filter((c) => selectedIds.includes(c.id));
     handleExportExcel(selectedList);
-  };
+  }, [codes, selectedIds, handleExportExcel]);
 
-  // Export to PDF (print)
-  const handleExportPdf = (itemsToExport?: CodeItem[]) => {
-    showToast("جاري تجهيز تقرير PDF وحفظه...", "info");
-    setTimeout(() => {
-      window.print();
-    }, 400);
-  };
+  // Export to PDF (cards)
+  const handleExportPdf = useCallback(async (itemsToExport?: CodeItem[]) => {
+    const list = itemsToExport && itemsToExport.length > 0 ? itemsToExport : codes;
+    if (!list || list.length === 0) {
+      showToast("لا توجد أكواد للتصدير", "error");
+      return;
+    }
+    showToast("جاري تجهيز وتوليد ملف PDF بالكروت للطباعة والقص...", "info");
+    try {
+      await exportCodesToPdf(list);
+      showToast(`تم تصدير ${list.length} كود إلى ملف PDF بنجاح`, "success");
+    } catch (err: any) {
+      console.error("PDF export error:", err);
+      showToast("حدث خطأ أثناء تصدير ملف PDF", "error");
+    }
+  }, [codes, showToast]);
 
-  const handlePrintSelected = () => {
+  const handleExportPdfSelected = useCallback(async () => {
+    const selectedList = codes.filter((c) => selectedIds.includes(c.id));
+    if (selectedList.length === 0) {
+      showToast("يرجى تحديد كود واحد على الأقل", "error");
+      return;
+    }
+    await handleExportPdf(selectedList);
+  }, [codes, selectedIds, handleExportPdf, showToast]);
+
+  const handlePrintSelected = useCallback(() => {
     const selectedList = codes.filter((c) => selectedIds.includes(c.id));
     setPrintCodesList(selectedList);
     setIsPrintModalOpen(true);
-  };
+  }, [codes, selectedIds]);
 
-  const handlePrintCards = () => {
+  const handlePrintCards = useCallback(() => {
     setPrintCodesList(codes);
     setIsPrintModalOpen(true);
-  };
+  }, [codes]);
+
+  const handleCloseDetailModal = useCallback(() => {
+    setDetailItem(null);
+  }, []);
+
+  const handleClosePrintModal = useCallback(() => {
+    setIsPrintModalOpen(false);
+  }, []);
 
   return (
     <div className="min-h-screen flex flex-col bg-[#F8F9FA] text-[#1A1D20]">
@@ -321,7 +481,7 @@ export default function AdminDashboardPage() {
         {/* VIEW 1: إدارة المنهج والدروس (Curriculum & Lessons) */}
         {visitedTabs["curriculum"] && (
           <div className={activeTab === "curriculum" ? "block animate-in fade-in duration-200" : "hidden"}>
-            <CurriculumView onShowToast={showToast} />
+            <CurriculumView onShowToast={showToast} onCurriculumChange={loadLessons} />
           </div>
         )}
 
@@ -334,7 +494,12 @@ export default function AdminDashboardPage() {
           <StatCards stats={stats} />
 
           {/* Generate Codes Form */}
-          <GenerateForm onGenerate={handleGenerate} />
+          <GenerateForm
+            onGenerate={handleGenerate}
+            lessons={lessonsList}
+            units={unitsList}
+            isLoadingLessons={isLoadingLessons}
+          />
 
           {/* Toolbar: Search, Filters & Export Buttons */}
           <Toolbar
@@ -344,22 +509,28 @@ export default function AdminDashboardPage() {
             setStatusFilter={setStatusFilter}
             onExportExcel={() => handleExportExcel()}
             onPrintCards={handlePrintCards}
+            itemsPerPage={itemsPerPage}
+            onItemsPerPageChange={handleItemsPerPageChange}
           />
 
           {/* Bulk Action Bar (Visible when checkboxes are checked) */}
           <BulkActionBar
             selectedCount={selectedIds.length}
             totalCount={codes.length}
+            filteredCount={filteredCodes.length}
+            onSelectAllFiltered={handleSelectAllFiltered}
             onPrintSelected={handlePrintSelected}
+            onExportPdfSelected={handleExportPdfSelected}
             onExportSelected={handleExportSelected}
             onDeleteSelected={handleDeleteSelected}
             onClearSelection={handleClearSelection}
           />
 
-          {/* Data Table */}
+          {/* Data Table with Skeleton Loader */}
           <CodesTable
             codes={paginatedCodes}
             selectedIds={selectedIds}
+            isLoading={isLoadingData}
             onToggleSelect={handleToggleSelect}
             onToggleSelectAll={handleToggleSelectAll}
             onViewDetails={(item) => setDetailItem(item)}
@@ -372,9 +543,21 @@ export default function AdminDashboardPage() {
             currentPage={currentPage}
             totalPages={totalPages}
             totalItems={filteredCodes.length}
-            startIndex={filteredCodes.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1}
-            endIndex={Math.min(filteredCodes.length, currentPage * itemsPerPage)}
+            startIndex={
+              filteredCodes.length === 0
+                ? 0
+                : itemsPerPage >= 99999
+                ? 1
+                : (currentPage - 1) * itemsPerPage + 1
+            }
+            endIndex={
+              itemsPerPage >= 99999
+                ? filteredCodes.length
+                : Math.min(filteredCodes.length, currentPage * itemsPerPage)
+            }
             onPageChange={(page) => setCurrentPage(page)}
+            itemsPerPage={itemsPerPage}
+            onItemsPerPageChange={handleItemsPerPageChange}
           />
         </div>
 
@@ -396,19 +579,23 @@ export default function AdminDashboardPage() {
       {/* Footer */}
       <Footer />
 
-      {/* Code Details Modal */}
-      <CodeDetailsModal
-        codeItem={detailItem}
-        onClose={() => setDetailItem(null)}
-        onToggleStatus={handleToggleStatus}
-      />
+      {/* Code Details Modal - Lazy Loaded */}
+      {detailItem && (
+        <CodeDetailsModal
+          codeItem={detailItem}
+          onClose={handleCloseDetailModal}
+          onToggleStatus={handleToggleStatus}
+        />
+      )}
 
-      {/* Print A4 Cards Modal */}
-      <PrintCardsModal
-        isOpen={isPrintModalOpen}
-        codes={printCodesList}
-        onClose={() => setIsPrintModalOpen(false)}
-      />
+      {/* Print A4 Cards Modal - Lazy Loaded */}
+      {isPrintModalOpen && (
+        <PrintCardsModal
+          isOpen={isPrintModalOpen}
+          codes={printCodesList}
+          onClose={handleClosePrintModal}
+        />
+      )}
 
       {/* Post-Generation Export Modal */}
       {postGenerateCodes && (

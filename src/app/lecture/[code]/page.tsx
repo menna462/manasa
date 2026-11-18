@@ -16,6 +16,7 @@ import {
   ExternalLink,
   HelpCircle,
   Sparkles,
+  Lock,
 } from "lucide-react";
 
 import { studentApi } from "@/lib/api";
@@ -102,6 +103,7 @@ export default function LectureViewerPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const [lesson, setLesson] = useState<LessonPayload | null>(null);
+  const [units, setUnits] = useState<any[]>([]);
   const [progress, setProgress] = useState<ProgressPayload>({
     currentSeconds: 0,
     watchProgress: 0,
@@ -123,6 +125,39 @@ export default function LectureViewerPage() {
   }, []);
 
   // جلب المحاضرة الحقيقية المرتبطة بهذا الكود من الباك إند
+  const fetchLecture = async (targetLessonId?: string) => {
+    setIsLoading(true);
+    setErrorMessage(null);
+
+    try {
+      const res = await studentApi.getLecture(studentCode, targetLessonId);
+
+      if (res.lesson) {
+        setLesson(res.lesson);
+      } else {
+        setErrorMessage("لم يتم العثور على محاضرة مرتبطة بهذا الكود.");
+      }
+
+      if (res.progress) {
+        setProgress(res.progress);
+      }
+
+      if (res.validity) {
+        setValidity(res.validity);
+      }
+
+      if (res.units && Array.isArray(res.units)) {
+        setUnits(res.units);
+      }
+    } catch (err: any) {
+      setErrorMessage(
+        err.message || "كود التفعيل غير صالح أو انتهت صلاحيته أو حدث خطأ أثناء جلب الدرس."
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (!studentCode) {
       setErrorMessage("لم يتم توفير كود تفعيل صحيح.");
@@ -130,36 +165,8 @@ export default function LectureViewerPage() {
       return;
     }
 
-    const fetchLecture = async () => {
-      setIsLoading(true);
-      setErrorMessage(null);
-
-      try {
-        const res = await studentApi.getLecture(studentCode);
-
-        if (res.lesson) {
-          setLesson(res.lesson);
-        } else {
-          setErrorMessage("لم يتم العثور على محاضرة مرتبطة بهذا الكود.");
-        }
-
-        if (res.progress) {
-          setProgress(res.progress);
-        }
-
-        if (res.validity) {
-          setValidity(res.validity);
-        }
-      } catch (err: any) {
-        setErrorMessage(
-          err.message || "كود التفعيل غير صالح أو انتهت صلاحيته أو حدث خطأ أثناء جلب الدرس."
-        );
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
     fetchLecture();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [studentCode]);
 
   // تحديث نسبة الإنجاز في الباك إند
@@ -459,6 +466,104 @@ export default function LectureViewerPage() {
                 </div>
               </div>
             </div>
+
+            {/* ── 3. Unit Lessons Playlist (When Unit or Multiple Lessons Available) ── */}
+            {units.length > 0 && (
+              <div className="bg-[#161922] border border-gray-800 rounded-3xl p-5 sm:p-6 shadow-xs space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-gray-800">
+                  <div className="flex items-center gap-2.5">
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#FF6A00]" />
+                    <h3 className="text-sm sm:text-base font-extrabold text-white">
+                      محتويات الوحدة والدروس المتاحة بهذا الكود
+                    </h3>
+                  </div>
+                  <span className="text-[11px] text-gray-400 font-semibold">
+                    انقر على أي محاضرة مصرح بها لبدء المشاهدة
+                  </span>
+                </div>
+
+                <div className="space-y-4">
+                  {units.map((unit) => (
+                    <div key={unit.id} className="space-y-2">
+                      <div className="text-xs font-bold text-gray-400 flex items-center gap-2">
+                        <span className="text-[#FF6A00]">●</span>
+                        <span className="text-gray-300">{unit.title}</span>
+                        {unit.subtitle && (
+                          <span className="text-gray-500 font-normal">({unit.subtitle})</span>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        {(unit.lessons || []).map((l: any) => {
+                          const isCurrent = String(l.id) === String(lesson.id);
+                          const isAccessible = Boolean(l.accessible);
+
+                          return (
+                            <button
+                              key={l.id}
+                              type="button"
+                              disabled={!isAccessible || isCurrent}
+                              onClick={() => fetchLecture(String(l.id))}
+                              className={`p-3.5 rounded-2xl border text-right transition-all flex items-center justify-between gap-3 ${
+                                isCurrent
+                                  ? "bg-[#FF6A00]/15 border-[#FF6A00] text-white"
+                                  : isAccessible
+                                  ? "bg-[#1C202B] hover:bg-[#232836] border-gray-700/70 text-gray-200 cursor-pointer"
+                                  : "bg-[#14161F]/60 border-gray-800/80 text-gray-500 cursor-not-allowed opacity-60"
+                              }`}
+                            >
+                              <div className="flex items-center gap-3 overflow-hidden">
+                                <div
+                                  className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                                    isCurrent
+                                      ? "bg-[#FF6A00] text-white"
+                                      : isAccessible
+                                      ? "bg-gray-800 text-gray-300"
+                                      : "bg-gray-900 text-gray-600"
+                                  }`}
+                                >
+                                  {isCurrent ? (
+                                    <Play className="w-3.5 h-3.5 fill-white" />
+                                  ) : isAccessible ? (
+                                    <Play className="w-3.5 h-3.5" />
+                                  ) : (
+                                    <Lock className="w-3.5 h-3.5" />
+                                  )}
+                                </div>
+                                <div className="truncate">
+                                  <div className="text-xs font-bold truncate">
+                                    {l.title}
+                                  </div>
+                                  <div className="text-[10px] text-gray-400 mt-0.5">
+                                    {l.duration || "—"}
+                                  </div>
+                                </div>
+                              </div>
+
+                              <div className="shrink-0 text-[11px] font-bold">
+                                {isCurrent ? (
+                                  <span className="text-[#FF6A00] bg-[#FF6A00]/10 px-2.5 py-1 rounded-lg">
+                                    المشاهدة الآن
+                                  </span>
+                                ) : isAccessible ? (
+                                  <span className="text-emerald-400 bg-emerald-950/40 px-2.5 py-1 rounded-lg">
+                                    متاح للكود
+                                  </span>
+                                ) : (
+                                  <span className="text-gray-500 flex items-center gap-1">
+                                    <Lock className="w-3 h-3" /> مقفل
+                                  </span>
+                                )}
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </main>

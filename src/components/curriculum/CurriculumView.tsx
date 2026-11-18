@@ -7,14 +7,16 @@ import { GradeLevelsSection } from "./GradeLevelsSection";
 import { CurriculumHierarchySection } from "./CurriculumHierarchySection";
 import { LessonEditorModal } from "./LessonEditorModal";
 import { AddGradeModal } from "./AddGradeModal";
+import { EditUnitModal } from "./EditUnitModal";
 import { GradeLevel, LessonItem, CurriculumStats, UnitItem } from "@/types/curriculum";
 import { curriculumApi } from "@/lib/api";
 
 interface CurriculumViewProps {
   onShowToast: (text: string, type?: "success" | "error" | "info") => void;
+  onCurriculumChange?: () => void;
 }
 
-export const CurriculumView: React.FC<CurriculumViewProps> = ({ onShowToast }) => {
+export const CurriculumView: React.FC<CurriculumViewProps> = ({ onShowToast, onCurriculumChange }) => {
   const [stats, setStats] = useState<CurriculumStats>({
     gradesCount: 0,
     unitsCount: 0,
@@ -49,6 +51,7 @@ export const CurriculumView: React.FC<CurriculumViewProps> = ({ onShowToast }) =
       if (res.stats) {
         setStats(res.stats);
       }
+      onCurriculumChange?.();
     } catch (err: any) {
       console.warn("Could not load backend curriculum:", err);
       onShowToast(err.message || "تعذر جلب بيانات المنهج من الخادم", "error");
@@ -66,6 +69,8 @@ export const CurriculumView: React.FC<CurriculumViewProps> = ({ onShowToast }) =
   const [targetUnitId, setTargetUnitId] = useState<string | undefined>(undefined);
   const [editingLesson, setEditingLesson] = useState<LessonItem | null>(null);
   const [isAddGradeOpen, setIsAddGradeOpen] = useState(false);
+  const [editingUnit, setEditingUnit] = useState<UnitItem | null>(null);
+  const [isEditUnitOpen, setIsEditUnitOpen] = useState(false);
 
   // Active Grade Level
   const activeGrade = grades.find((g) => g.id === activeGradeId) || grades[0] || null;
@@ -183,6 +188,36 @@ export const CurriculumView: React.FC<CurriculumViewProps> = ({ onShowToast }) =
     setIsEditorModalOpen(true);
   };
 
+  const handleEditUnit = (unit: UnitItem) => {
+    setEditingUnit(unit);
+    setIsEditUnitOpen(true);
+  };
+
+  const handleSaveUnit = async (unitId: string, data: { title: string; subtitle?: string }) => {
+    try {
+      await curriculumApi.updateUnit(unitId, data);
+      onShowToast(`تم تحديث بيانات الوحدة "${data.title}" بنجاح!`, "success");
+      await loadCurriculum();
+    } catch (err: any) {
+      onShowToast(err.message || "حدث خطأ أثناء تعديل الوحدة", "error");
+      throw err;
+    }
+  };
+
+  const handleDeleteUnit = async (unitId: string, unitTitle: string) => {
+    if (!window.confirm(`هل أنت متأكد من حذف الوحدة "${unitTitle}" وكافة المحاضرات التابعة لها نهائياً؟`)) {
+      return;
+    }
+
+    try {
+      await curriculumApi.deleteUnit(unitId);
+      onShowToast(`تم حذف الوحدة "${unitTitle}" بنجاح`, "info");
+      await loadCurriculum();
+    } catch (err: any) {
+      onShowToast(err.message || "حدث خطأ أثناء حذف الوحدة", "error");
+    }
+  };
+
   const handleSaveOrder = () => {
     onShowToast("تم حفظ ترتيب وتسلسل المنهج بنجاح لجميع الطلاب!", "success");
   };
@@ -260,6 +295,8 @@ export const CurriculumView: React.FC<CurriculumViewProps> = ({ onShowToast }) =
               }}
               onEditLesson={handleEditLesson}
               onDeleteLesson={handleDeleteLesson}
+              onEditUnit={handleEditUnit}
+              onDeleteUnit={handleDeleteUnit}
             />
           )}
 
@@ -278,6 +315,17 @@ export const CurriculumView: React.FC<CurriculumViewProps> = ({ onShowToast }) =
               onSave={handleSaveLesson}
             />
           )}
+
+          {/* Edit Unit Modal */}
+          <EditUnitModal
+            isOpen={isEditUnitOpen}
+            unit={editingUnit}
+            onClose={() => {
+              setIsEditUnitOpen(false);
+              setEditingUnit(null);
+            }}
+            onSave={handleSaveUnit}
+          />
         </>
       )}
 

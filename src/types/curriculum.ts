@@ -23,6 +23,7 @@ export interface UnitItem {
   id: string;
   unitNumber: number;
   title: string;
+  subtitle?: string;
   lessonsCount: number;
   pdfCount?: number;
   isExpanded?: boolean;

@@ -91,7 +91,7 @@ export const LessonEditorModal: React.FC<LessonEditorModalProps> = ({
 }) => {
   // Step 1: Unit selection or new unit
   const [selectedUnitId, setSelectedUnitId] = useState<string>("");
-  const [newUnitName, setNewUnitName] = useState<string>("الوحدة 4: الكيمياء الكهربية والخلايا الجلفانية");
+  const [newUnitName, setNewUnitName] = useState<string>("");
 
   // Step 2: Lecture info & video
   const [title, setTitle] = useState<string>("المحاضرة 1: الخلايا الجلفانية وتفاعلات الأكسدة والاختزال");
@@ -179,9 +179,9 @@ export const LessonEditorModal: React.FC<LessonEditorModalProps> = ({
       setIsPlayingPreview(false);
     } else {
       setSelectedUnitId(defaultUnitId || units[0]?.id || "");
-      setTitle("المحاضرة 1: الخلايا الجلفانية وتفاعلات الأكسدة والاختزال");
+      setTitle("محاضرة جديدة");
       setDuration("01:15:00");
-      setNewUnitName("الوحدة 4: الكيمياء الكهربية والخلايا الجلفانية");
+      setNewUnitName("");
       setUploadProgress(85);
       setFileName("unit4_lecture01_galvanic.mp4");
       setFileSize("740 MB");
@@ -368,7 +368,7 @@ export const LessonEditorModal: React.FC<LessonEditorModalProps> = ({
                   type="text"
                   value={newUnitName}
                   onChange={(e) => setNewUnitName(e.target.value)}
-                  placeholder="الوحدة 4: الكيمياء الكهربية والخلايا الجلفانية"
+                  placeholder="اكتب اسم وحدة جديدة هنا (اختياري)..."
                   className="w-full bg-[#F1F3F5] text-gray-800 placeholder:text-gray-400 rounded-xl px-3.5 py-2.5 text-xs sm:text-sm font-bold border border-transparent focus:border-[#FF6A00] focus:bg-white focus:outline-hidden transition-all text-right"
                 />
               </div>

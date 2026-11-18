@@ -11,6 +11,8 @@ interface ToolbarProps {
   setStatusFilter: (s: string) => void;
   onExportExcel: () => void;
   onPrintCards: () => void;
+  itemsPerPage?: number;
+  onItemsPerPageChange?: (n: number) => void;
 }
 
 export const Toolbar: React.FC<ToolbarProps> = ({
@@ -20,13 +22,15 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   setStatusFilter,
   onExportExcel,
   onPrintCards,
+  itemsPerPage,
+  onItemsPerPageChange,
 }) => {
   return (
     <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 my-4">
-      {/* Right Section: Search & Status Filter */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 flex-1 max-w-2xl">
+      {/* Right Section: Search & Status Filter & Rows per page */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 flex-1 max-w-3xl flex-wrap">
         {/* Search Input */}
-        <div className="relative flex-1">
+        <div className="relative flex-1 min-w-[220px]">
           <div className="absolute inset-y-0 right-0 pr-3.5 flex items-center pointer-events-none text-gray-400">
             <Search className="w-4 h-4" />
           </div>
@@ -40,7 +44,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
         </div>
 
         {/* Status Dropdown */}
-        <div className="relative min-w-[150px]">
+        <div className="relative min-w-[140px]">
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
@@ -55,6 +59,26 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             <ChevronDown className="w-4 h-4" />
           </div>
         </div>
+
+        {/* Rows Per Page Dropdown */}
+        {itemsPerPage !== undefined && onItemsPerPageChange && (
+          <div className="relative min-w-[130px]">
+            <select
+              value={itemsPerPage >= 99999 ? 99999 : itemsPerPage}
+              onChange={(e) => onItemsPerPageChange(Number(e.target.value))}
+              className="w-full appearance-none bg-[#F1F3F5] text-gray-800 rounded-xl px-4 py-2.5 pr-4 pl-9 text-xs sm:text-sm font-semibold border border-transparent focus:border-[#FF6A00] focus:bg-white focus:outline-hidden cursor-pointer transition-all text-right"
+            >
+              <option value={10}>10 في الصفحة</option>
+              <option value={20}>20 في الصفحة</option>
+              <option value={50}>50 في الصفحة</option>
+              <option value={100}>100 في الصفحة</option>
+              <option value={99999}>عرض الكل (All)</option>
+            </select>
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-500">
+              <ChevronDown className="w-4 h-4" />
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Left Section: Action Buttons */}
